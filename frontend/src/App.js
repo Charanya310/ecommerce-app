@@ -1,21 +1,27 @@
-import React, { useEffect, useState } from "react";
-import axios from "axios";
+import React from "react";
+import "./App.css";
 function App() {
-  const [products, setProducts] = useState([]);
-  useEffect(() => {
-    axios.get("http://localhost:5000/api/products")
-      .then(res => setProducts(res.data));
-  }, []);
+  const products = [
+    { id: 1, name: "Laptop", price: "$900", img: "https://via.placeholder.com/200" },
+    { id: 2, name: "Phone", price: "$500", img: "https://via.placeholder.com/200" },
+    { id: 3, name: "Headphones", price: "$120", img: "https://via.placeholder.com/200" },
+    { id: 4, name: "Smart Watch", price: "$200", img: "https://via.placeholder.com/200" }
+  ];
   return (
     <div>
-      <h1>Ecommerce Products</h1>
-      <ul>
-        {products.map(p => (
-          <li key={p.id}>
-            {p.name} - ${p.price}
-          </li>
+      <header className="header">
+        <h1>My Ecommerce Store</h1>
+      </header>
+      <div className="products">
+        {products.map((p) => (
+          <div key={p.id} className="card">
+            <img src={p.img} alt={p.name} />
+            <h3>{p.name}</h3>
+            <p>{p.price}</p>
+            <button>Add to Cart</button>
+          </div>
         ))}
-      </ul>
+      </div>
     </div>
   );
 }
