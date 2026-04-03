@@ -8,7 +8,7 @@ on:
 
 env:
   REGISTRY: gcr.io
-  PROJECT: Devops-Docker
+  PROJECT: devops-docker-491007
   APP: ecommerce-frontend
 jobs:
   build-and-push:
