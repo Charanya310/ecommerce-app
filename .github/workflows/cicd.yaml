@@ -45,7 +45,7 @@ jobs:
       - name: Build Docker image
         run: docker build . --file frontend/Dockerfile --tag $REGISTRY/$PROJECT/$APP/$APP:$GITHUB_REF_NAME-$GITHUB_RUN_NUMBER
 
-    # Push the Docker image to Google Container Registry
+    # Push the Docker image To Google Container Registry
       - name: Push Docker image
         run: docker push $REGISTRY/$PROJECT/$APP/$APP:$GITHUB_REF_NAME-$GITHUB_RUN_NUMBER
 
