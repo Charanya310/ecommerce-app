@@ -1,0 +1,107 @@
+name: CI/CD Build, Push & Deploy for ecommerce-app
+
+on:
+  push:
+    paths:
+      - 'backend/**'
+    branches: [ "feature" ]
+
+env:
+  REGISTRY: gcr.io
+  PROJECT: devops-docker-491007
+  APP: ecommerce-backend
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: trstringer/manual-approval@v1
+        timeout-minutes: 15
+        with:
+          secret: ${{ secrets.GIT_TOKEN }}
+          approvers: charanya310
+          minimum-approvals: 1
+          issue-title: "Deploying to ecommerce backend prod"
+          issue-body: "Please approve or deny the deployment"
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2 
+        with: 
+          credentials_json: ${{ secrets.GCP_DEVOPS_CREDENTIALS }}
+
+      - name: Setup gcloud 
+        uses: google-github-actions/setup-gcloud@v2
+        
+      - name: Configure Docker authentication 
+        run: gcloud auth configure-docker --quiet
+      
+      # - name: Authenticate to Google Cloud
+      #   uses: google-github-actions/auth@v1
+      #   with:
+      #     credentials_json: ${{ secrets.GCP_DEVOPS_CREDENTIALS }}
+
+      - name: Set image tag name
+        id: tagname
+        run: |
+          TAGNAME=$(echo "$GITHUB_REF_NAME-$GITHUB_RUN_NUMBER")
+          echo TAGNAME=$TAGNAME
+          echo "tagname=$TAGNAME" >> $GITHUB_OUTPUT
+      - uses: satackey/action-docker-layer-caching@v0.0.11
+      # Ignore the failure of a step and avoid terminating the job.
+        continue-on-error: true
+
+      - name: Build Docker image
+        run: docker build backend --file backend/Dockerfile --tag $REGISTRY/$PROJECT/$APP/$APP:$GITHUB_REF_NAME-$GITHUB_RUN_NUMBER
+
+    # Push the Docker image To Google Container Registry
+      - name: Push Docker image
+        run: docker push $REGISTRY/$PROJECT/$APP/$APP:$GITHUB_REF_NAME-$GITHUB_RUN_NUMBER
+
+  # deploy:
+  #   needs: build-and-push
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout workspace
+  #       uses: actions/checkout@v4
+
+  #     - name: Install SSH client
+  #       run: sudo apt-get update && sudo apt-get install -y openssh-client
+
+  #     - name: Configure SSH key
+  #       run: |
+  #         mkdir -p ~/.ssh
+  #         echo "${{ secrets.VM_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+  #         chmod 600 ~/.ssh/id_rsa
+
+  #     - name: Deploy docker-compose to VM
+  #       env:
+  #         IMAGE_TAG: ${{ env.IMAGE_TAG }}
+  #         ARTIFACT_REGISTRY_URL: ${{ env.ARTIFACT_REGISTRY_URL }}
+  #         VM_HOST: ${{ secrets.VM_SSH_HOST }}
+  #         VM_USER: ${{ secrets.VM_SSH_USER }}
+  #         VM_PORT: ${{ secrets.VM_SSH_PORT }}
+  #       run: |
+  #         ssh_port="${VM_PORT:-22}"
+
+  #         cat > /tmp/docker-compose.deploy.yml <<EOF
+  #         version: "3"
+  #         services:
+  #           backend:
+  #             image: ${ARTIFACT_REGISTRY_URL}/backend:${IMAGE_TAG}
+  #             ports:
+  #               - "5000:5000"
+  #           frontend:
+  #             image: ${ARTIFACT_REGISTRY_URL}/frontend:${IMAGE_TAG}
+  #             ports:
+  #               - "3000:3000"
+  #             depends_on:
+  #               - backend
+  #         EOF
+
+  #         scp -o StrictHostKeyChecking=no -P "${ssh_port}" /tmp/docker-compose.deploy.yml "${VM_USER}@${VM_HOST}:/tmp/docker-compose.deploy.yml"
+
+  #         ssh -o StrictHostKeyChecking=no -p "${ssh_port}" "${VM_USER}@${VM_HOST}" \
+  #           'docker-compose -f /tmp/docker-compose.deploy.yml pull && docker-compose -f /tmp/docker-compose.deploy.yml up -d'
