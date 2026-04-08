@@ -61,8 +61,8 @@ jobs:
           VM_PORT: ${{ secrets.VM_SSH_PORT }}
         run: |
           ssh -o StrictHostKeyChecking=no -p $VM_PORT $VM_USER@$VM_HOST << EOF
-          docker pull gcr.io/devops-docker-491007/ecommerce-frontend:$GITHUB_RUN_NUMBER
-          docker stop frontend || true
-          docker rm frontend || true
-          docker run -d -p 3000:3000 --name frontend gcr.io/devops-docker-491007/ecommerce-frontend:$GITHUB_RUN_NUMBER
+          sudo docker pull gcr.io/devops-docker-491007/ecommerce-frontend:$GITHUB_RUN_NUMBER
+          sudo docker stop frontend || true
+          sudo docker rm frontend || true
+          sudo docker run -d -p 3000:3000 --name frontend gcr.io/devops-docker-491007/ecommerce-frontend:$GITHUB_RUN_NUMBER
           EOF
