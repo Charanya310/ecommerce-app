@@ -65,5 +65,5 @@ jobs:
           sudo docker pull gcr.io/devops-docker-491007/ecommerce-backend:$GITHUB_RUN_NUMBER
           sudo docker stop backend || true
           sudo docker rm backend || true
-          sudo docker run -d -p 3000:3000 --name backend gcr.io/devops-docker-491007/ecommerce-backend:$GITHUB_RUN_NUMBER
+          sudo docker run -d -p 4000:4000 --name backend gcr.io/devops-docker-491007/ecommerce-backend:$GITHUB_RUN_NUMBER
           EOF
