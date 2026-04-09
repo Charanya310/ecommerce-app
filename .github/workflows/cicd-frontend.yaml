@@ -12,8 +12,27 @@ env:
   APP: ecommerce-frontend
 
 jobs:
+  sonar-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v2
+        with:
+          args: >
+            -Dsonar.projectKey=ecommerce-frontend
+            -Dsonar.sources=frontend
+            -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}
+            -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+
+      - name: SonarQube Quality Gate
+        uses: SonarSource/sonarqube-quality-gate-action@v1
+        timeout-minutes: 5
+        env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
   build-and-push:
+    needs: sonar-analysis
     runs-on: ubuntu-latest
 
     steps:
