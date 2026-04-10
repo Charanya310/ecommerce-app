@@ -62,14 +62,14 @@ jobs:
       # Download template
       - name: Download Trivy HTML template
         run: curl -L https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl -o html.tpl
-         
+
       - name: Trivy Scan 
         uses: aquasecurity/trivy-action@master 
         continue-on-error: true
         with: 
           image-ref: ${{ env.REGISTRY }}/${{ env.PROJECT }}/${{ env.APP }}:${{ github.run_number }}
           format: template 
-          template: "@/contrib/html.tpl" 
+          template: "@html.tpl" 
           output: trivy-report.html
           severity: CRITICAL,HIGH 
 
