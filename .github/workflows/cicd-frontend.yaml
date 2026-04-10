@@ -58,7 +58,11 @@ jobs:
           docker build frontend \
           -f frontend/Dockerfile \
           -t $REGISTRY/$PROJECT/$APP:${{ github.run_number }}
-     
+          
+      # Download template
+      - name: Download Trivy HTML template
+        run: curl -L https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl -o html.tpl
+         
       - name: Trivy Scan 
         uses: aquasecurity/trivy-action@master 
         continue-on-error: true
