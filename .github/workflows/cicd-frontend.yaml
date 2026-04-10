@@ -4,7 +4,7 @@ on:
   push:
     paths:
       - 'frontend/**'
-    branches: [ "feature" ]
+    branches: [ "feature/*" ]
 
 permissions:
   contents: read 
@@ -111,23 +111,23 @@ jobs:
           sudo docker run -d -p 3000:3000 --name frontend gcr.io/devops-docker-491007/ecommerce-frontend:${{ github.run_number }}
           EOF
 
-      # -----------------------------
-      # 4️⃣ Dynamic Security Scan (DAST)
-      # -----------------------------
-
-        zap-scan:
-          needs: deploy
-          runs-on: ubuntu-latest
-
-          steps:
-            - name: OWASP ZAP Full Scan
-              uses: zaproxy/action-full-scan@v0.7.0
-              with:
-                target: "http://${{ secrets.VM_SSH_HOST }}:3000"
-                cmd_options: "-a"
-
-            - name: Upload ZAP Report
-              uses: actions/upload-artifact@v4
-              with:
-                name: zap-security-report
-                path: report_html.html
+            # -----------------------------
+            # 4️⃣ Dynamic Security Scan (DAST)
+            # -----------------------------
+      
+  zap-scan:
+    needs: deploy
+    runs-on: ubuntu-latest
+      
+    steps:
+      - name: OWASP ZAP Full Scan
+        uses: zaproxy/action-full-scan@v0.7.0
+        with:
+          target: "http://${{ secrets.VM_SSH_HOST }}:3000"
+          cmd_options: "-a"
+      
+      - name: Upload ZAP Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-security-report
+          path: report_html.html
