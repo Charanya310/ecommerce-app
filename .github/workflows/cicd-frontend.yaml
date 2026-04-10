@@ -5,6 +5,10 @@ on:
     paths:
       - 'frontend/**'
     branches: [ "feature" ]
+    
+permissions:
+  contents: read 
+  security-events: write
 
 env:
   REGISTRY: gcr.io
