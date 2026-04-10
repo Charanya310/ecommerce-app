@@ -53,11 +53,18 @@ jobs:
         run: |
           docker build frontend \
           -f frontend/Dockerfile \
-          -t $REGISTRY/$PROJECT/$APP:$GITHUB_RUN_NUMBER
+          -t $REGISTRY/$PROJECT/$APP:${{ github.run_number }}
+     
+      - name: Trivy Scan 
+        uses: aquasecurity/trivy-action@master 
+        with: 
+          image-ref: ${{ env.REGISTRY }}/${{ env.PROJECT }}/${{ env.APP }}:${{ github.run_number }}
+          severity: CRITICAL,HIGH 
+          exit-code: 1
 
       - name: Push Image
         run: |
-          docker push $REGISTRY/$PROJECT/$APP:$GITHUB_RUN_NUMBER
+          docker push $REGISTRY/$PROJECT/$APP:${{ github.run_number }}
 
 
   deploy:
@@ -81,8 +88,8 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no -p $VM_PORT $VM_USER@$VM_HOST << EOF
           sudo gcloud auth configure-docker --quiet
-          sudo docker pull gcr.io/devops-docker-491007/ecommerce-frontend:$GITHUB_RUN_NUMBER
+          sudo docker pull gcr.io/devops-docker-491007/ecommerce-frontend:${{ github.run_number }}
           sudo docker stop frontend || true
           sudo docker rm frontend || true
-          sudo docker run -d -p 3000:3000 --name frontend gcr.io/devops-docker-491007/ecommerce-frontend:$GITHUB_RUN_NUMBER
+          sudo docker run -d -p 3000:3000 --name frontend gcr.io/devops-docker-491007/ecommerce-frontend:${{ github.run_number }}
           EOF
