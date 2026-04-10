@@ -1,4 +1,3 @@
-#dummy
 FROM node:18-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
@@ -8,6 +7,7 @@ COPY . .
 FROM node:18-alpine
 WORKDIR /app
 COPY --from=builder /app .
+RUN chown -R node:node /app
 EXPOSE 3000
 USER node
 CMD ["npm", "start"]
