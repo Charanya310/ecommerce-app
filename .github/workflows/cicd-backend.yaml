@@ -6,6 +6,12 @@ on:
       - 'backend/**'
     branches: [ "feature" ]
 
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  security-events: write
+
 env:
   REGISTRY: gcr.io
   PROJECT: devops-docker-491007
@@ -53,11 +59,31 @@ jobs:
         run: |
           docker build backend \
           -f backend/Dockerfile \
-          -t $REGISTRY/$PROJECT/$APP:$GITHUB_RUN_NUMBER
+          -t $REGISTRY/$PROJECT/$APP:${{ github.run_number }}
+          
+      # Download template
+      - name: Download Trivy HTML template
+        run: curl -L https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl -o html.tpl
+
+      - name: Trivy Scan 
+        uses: aquasecurity/trivy-action@master 
+        continue-on-error: true
+        with: 
+          image-ref: ${{ env.REGISTRY }}/${{ env.PROJECT }}/${{ env.APP }}:${{ github.run_number }}
+          format: template 
+          template: "@html.tpl" 
+          output: trivy-report.html
+          severity: CRITICAL,HIGH 
+
+      - name: Upload Trivy Report 
+        uses: actions/upload-artifact@v4 
+        with: 
+          name: trivy-html-report 
+          path: trivy-report.html
 
       - name: Push Image
         run: |
-          docker push $REGISTRY/$PROJECT/$APP:$GITHUB_RUN_NUMBER
+          docker push $REGISTRY/$PROJECT/$APP:${{ github.run_number }}
 
 
   deploy:
@@ -81,8 +107,44 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no -p $VM_PORT $VM_USER@$VM_HOST << EOF
           sudo gcloud auth configure-docker --quiet
-          sudo docker pull gcr.io/devops-docker-491007/ecommerce-backend:$GITHUB_RUN_NUMBER
+          sudo docker pull gcr.io/devops-docker-491007/ecommerce-backend:${{ github.run_number }}
           sudo docker stop backend || true
           sudo docker rm backend || true
-          sudo docker run -d -p 4000:4000 --name backend gcr.io/devops-docker-491007/ecommerce-backend:$GITHUB_RUN_NUMBER
+          sudo docker run -d -p 3000:3000 --name backend gcr.io/devops-docker-491007/ecommerce-backend:${{ github.run_number }}
           EOF
+
+            # -----------------------------
+            # 4️⃣ Dynamic Security Scan (DAST)
+            # -----------------------------
+      
+  zap-scan:
+    needs: deploy
+    runs-on: ubuntu-latest
+      
+    steps:
+      - name: Wait for Application
+        run: |
+          for i in {1..30}; do
+            if curl -f http://${{ secrets.VM_SSH_HOST }}:3000 > /dev/null 2>&1; then
+              echo "Application is ready"
+              exit 0
+            fi
+            echo "Waiting for application to be ready... attempt $i/30"
+            sleep 10
+          done
+          echo "Application failed to start"
+          exit 1
+
+      - name: OWASP ZAP Full Scan
+        uses: zaproxy/action-full-scan@v0.7.0
+        continue-on-error: true
+        with:
+          target: "http://${{ secrets.VM_SSH_HOST }}:3000"
+          cmd_options: "-a"
+      
+      - name: Upload ZAP Report
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: zap-security-report
+          path: report_html.html
