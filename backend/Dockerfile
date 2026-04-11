@@ -1,8 +1,14 @@
 #dummyy
-FROM node:18
+FROM node:18-alpine AS builder
 WORKDIR /app
-COPY package.json .
+COPY package*.json ./
 RUN npm install
 COPY . .
+
+FROM node:18-alpine
+WORKDIR /app
+COPY --from=builder /app .
+RUN chown -R node:node /app
 EXPOSE 4000
-CMD ["node", "server.js"]
+USER node
+CMD ["npm", "start"]
