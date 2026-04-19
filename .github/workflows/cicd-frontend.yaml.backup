@@ -86,21 +86,65 @@ jobs:
           docker push $REGISTRY/$PROJECT/$APP:${{ github.run_number }}
 
 
-      - name: Checkout Helm repo
-        uses: actions/checkout@v3
-        with:
-          repository: charanya310/helmcharts
-          token: ${{ secrets.GIT_TOKEN }}
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
 
-      - name: Update Helm values.yaml
-        uses: fjogeleit/yaml-update-action@main
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VM_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      - name: Deploy to VM
+        env:
+          VM_HOST: ${{ secrets.VM_SSH_HOST }}
+          VM_USER: ${{ secrets.VM_SSH_USER }}
+          VM_PORT: ${{ secrets.VM_SSH_PORT }}
+        run: |
+          ssh -o StrictHostKeyChecking=no -p $VM_PORT $VM_USER@$VM_HOST << EOF
+          sudo gcloud auth configure-docker --quiet
+          sudo docker pull gcr.io/devops-docker-491007/ecommerce-frontend:${{ github.run_number }}
+          sudo docker stop frontend || true
+          sudo docker rm frontend || true
+          sudo docker run -d -p 3000:3000 --name frontend gcr.io/devops-docker-491007/ecommerce-frontend:${{ github.run_number }}
+          EOF
+
+            # -----------------------------
+            # 4️⃣ Dynamic Security Scan (DAST)
+            # -----------------------------
+      
+  zap-scan:
+    needs: deploy
+    runs-on: ubuntu-latest
+      
+    steps:
+      - name: Wait for Application
+        run: |
+          for i in {1..30}; do
+            if curl -f http://${{ secrets.VM_SSH_HOST }}:3000 > /dev/null 2>&1; then
+              echo "Application is ready"
+              exit 0
+            fi
+            echo "Waiting for application to be ready... attempt $i/30"
+            sleep 10
+          done
+          echo "Application failed to start"
+          exit 1
+
+      - name: OWASP ZAP Full Scan
+        uses: zaproxy/action-full-scan@v0.7.0
+        continue-on-error: true
         with:
-          valueFile: '/ecomm-frontend/values.yaml'
-          repository: charanya310/helmcharts
-          token: ${{ secrets.GIT_TOKEN }}
-          propertyPath: 'image.tag'
-          value: ${{ github.run_number }}
-          branch: main
-          commitChange: true
-          createPR: false
-          message: "tag update to ${{ github.run_number }}"
+          target: "http://${{ secrets.VM_SSH_HOST }}:3000"
+          cmd_options: "-a"
+      
+      - name: Upload ZAP Report
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: zap-security-report
+          path: report_html.html
