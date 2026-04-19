@@ -95,7 +95,7 @@ jobs:
       - name: Update Helm values.yaml
         uses: fjogeleit/yaml-update-action@main
         with:
-          valueFile: '/ecomm-frontend/values.yaml'
+          valueFile: 'ecomm-frontend/values.yaml'
           repository: charanya310/helmcharts
           token: ${{ secrets.GIT_TOKEN }}
           propertyPath: 'image.tag'
