@@ -1,0 +1,150 @@
+name: CI/CD Build, Push & Deploy for ecommerce-app
+
+on:
+  push:
+    paths:
+      - 'backend/**'
+    branches: [ "feature" ]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  security-events: write
+
+env:
+  REGISTRY: gcr.io
+  PROJECT: devops-docker-491007
+  APP: ecommerce-backend
+
+jobs:
+  sonar-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v2
+        with:
+          args: >
+            -Dsonar.projectKey=ecommerce-backend
+            -Dsonar.sources=backend
+            -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}
+            -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+
+      - name: SonarQube Quality Gate
+        uses: SonarSource/sonarqube-quality-gate-action@v1
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  build-and-push:
+    needs: sonar-analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_DEVOPS_CREDENTIALS }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker
+        run: gcloud auth configure-docker --quiet
+
+      - name: Build Image
+        run: |
+          docker build backend \
+          -f backend/Dockerfile \
+          -t $REGISTRY/$PROJECT/$APP:${{ github.run_number }}
+          
+      # Download template
+      - name: Download Trivy HTML template
+        run: curl -L https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl -o html.tpl
+
+      - name: Trivy Scan 
+        uses: aquasecurity/trivy-action@master 
+        continue-on-error: true
+        with: 
+          image-ref: ${{ env.REGISTRY }}/${{ env.PROJECT }}/${{ env.APP }}:${{ github.run_number }}
+          format: template 
+          template: "@html.tpl" 
+          output: trivy-report.html
+          severity: CRITICAL,HIGH 
+
+      - name: Upload Trivy Report 
+        uses: actions/upload-artifact@v4 
+        with: 
+          name: trivy-html-report 
+          path: trivy-report.html
+
+      - name: Push Image
+        run: |
+          docker push $REGISTRY/$PROJECT/$APP:${{ github.run_number }}
+
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VM_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      - name: Deploy to VM
+        env:
+          VM_HOST: ${{ secrets.VM_SSH_HOST }}
+          VM_USER: ${{ secrets.VM_SSH_USER }}
+          VM_PORT: ${{ secrets.VM_SSH_PORT }}
+        run: |
+          ssh -o StrictHostKeyChecking=no -p $VM_PORT $VM_USER@$VM_HOST << EOF
+          sudo gcloud auth configure-docker --quiet
+          sudo docker pull gcr.io/devops-docker-491007/ecommerce-backend:${{ github.run_number }}
+          sudo docker stop backend || true
+          sudo docker rm backend || true
+          sudo docker run -d -p 4000:4000 --name backend gcr.io/devops-docker-491007/ecommerce-backend:${{ github.run_number }}
+          EOF
+
+            # -----------------------------
+            # 4️⃣ Dynamic Security Scan (DAST)
+            # -----------------------------
+      
+  zap-scan:
+    needs: deploy
+    runs-on: ubuntu-latest
+      
+    steps:
+      - name: Wait for Application
+        run: |
+          for i in {1..30}; do
+            if curl -f http://${{ secrets.VM_SSH_HOST }}:3000 > /dev/null 2>&1; then
+              echo "Application is ready"
+              exit 0
+            fi
+            echo "Waiting for application to be ready... attempt $i/30"
+            sleep 10
+          done
+          echo "Application failed to start"
+          exit 1
+
+      - name: OWASP ZAP Full Scan
+        uses: zaproxy/action-full-scan@v0.7.0
+        continue-on-error: true
+        with:
+          target: "http://${{ secrets.VM_SSH_HOST }}:3000"
+          cmd_options: "-a"
+      
+      - name: Upload ZAP Report
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: zap-security-report
+          path: report_html.html

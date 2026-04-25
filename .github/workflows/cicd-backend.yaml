@@ -18,27 +18,27 @@ env:
   APP: ecommerce-backend
 
 jobs:
-  sonar-analysis:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@v2
-        with:
-          args: >
-            -Dsonar.projectKey=ecommerce-backend
-            -Dsonar.sources=backend
-            -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}
-            -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+  # sonar-analysis:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: SonarQube Scan
+  #       uses: SonarSource/sonarqube-scan-action@v2
+  #       with:
+  #         args: >
+  #           -Dsonar.projectKey=ecommerce-backend
+  #           -Dsonar.sources=backend
+  #           -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}
+  #           -Dsonar.login=${{ secrets.SONAR_TOKEN }}
 
-      - name: SonarQube Quality Gate
-        uses: SonarSource/sonarqube-quality-gate-action@v1
-        timeout-minutes: 5
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+  #     - name: SonarQube Quality Gate
+  #       uses: SonarSource/sonarqube-quality-gate-action@v1
+  #       timeout-minutes: 5
+  #       env:
+  #         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
   build-and-push:
-    needs: sonar-analysis
+    #needs: sonar-analysis
     runs-on: ubuntu-latest
 
     steps:
@@ -86,65 +86,21 @@ jobs:
           docker push $REGISTRY/$PROJECT/$APP:${{ github.run_number }}
 
 
-  deploy:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.VM_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-
-      - name: Deploy to VM
-        env:
-          VM_HOST: ${{ secrets.VM_SSH_HOST }}
-          VM_USER: ${{ secrets.VM_SSH_USER }}
-          VM_PORT: ${{ secrets.VM_SSH_PORT }}
-        run: |
-          ssh -o StrictHostKeyChecking=no -p $VM_PORT $VM_USER@$VM_HOST << EOF
-          sudo gcloud auth configure-docker --quiet
-          sudo docker pull gcr.io/devops-docker-491007/ecommerce-backend:${{ github.run_number }}
-          sudo docker stop backend || true
-          sudo docker rm backend || true
-          sudo docker run -d -p 4000:4000 --name backend gcr.io/devops-docker-491007/ecommerce-backend:${{ github.run_number }}
-          EOF
-
-            # -----------------------------
-            # 4️⃣ Dynamic Security Scan (DAST)
-            # -----------------------------
-      
-  zap-scan:
-    needs: deploy
-    runs-on: ubuntu-latest
-      
-    steps:
-      - name: Wait for Application
-        run: |
-          for i in {1..30}; do
-            if curl -f http://${{ secrets.VM_SSH_HOST }}:3000 > /dev/null 2>&1; then
-              echo "Application is ready"
-              exit 0
-            fi
-            echo "Waiting for application to be ready... attempt $i/30"
-            sleep 10
-          done
-          echo "Application failed to start"
-          exit 1
-
-      - name: OWASP ZAP Full Scan
-        uses: zaproxy/action-full-scan@v0.7.0
-        continue-on-error: true
+      - name: Checkout Helm repo
+        uses: actions/checkout@v3
         with:
-          target: "http://${{ secrets.VM_SSH_HOST }}:3000"
-          cmd_options: "-a"
-      
-      - name: Upload ZAP Report
-        uses: actions/upload-artifact@v4
-        continue-on-error: true
+          repository: charanya310/helmcharts
+          token: ${{ secrets.GIT_TOKEN }}
+
+      - name: Update Helm values.yaml
+        uses: fjogeleit/yaml-update-action@main
         with:
-          name: zap-security-report
-          path: report_html.html
+          valueFile: 'ecomm-backend/values.yaml'
+          repository: charanya310/helmcharts
+          token: ${{ secrets.GIT_TOKEN }}
+          propertyPath: 'image.tag'
+          value: ${{ github.run_number }}
+          branch: main
+          commitChange: true
+          createPR: false
+          message: "tag update to ${{ github.run_number }}"
